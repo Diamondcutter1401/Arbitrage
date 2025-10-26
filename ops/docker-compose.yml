@@ -1,0 +1,51 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: arb
+      POSTGRES_PASSWORD: arb
+      POSTGRES_DB: arb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ../sql/indexes.sql:/docker-entrypoint-initdb.d/02-indexes.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arb -d arb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  bot:
+    build: ../
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - ../bot/config:/app/bot/config:ro
+    healthcheck:
+      test: ["CMD", "node", "-e", "console.log('Bot is running')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Optional: Add monitoring with Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+
+volumes:
+  pgdata:

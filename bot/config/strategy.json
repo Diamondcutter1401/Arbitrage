@@ -1,0 +1,23 @@
+{
+  "minTvlUsd": 100000,
+  "maxHops": 3,
+  "denyFeeOnTransfer": true,
+  "sizesUsd": [500, 2000, 5000, 10000],
+  "flashloan": {
+    "enabled": true,
+    "amountUsd": 10000,
+    "feePct": 0.0007
+  },
+  "tips": {
+    "minGwei": 0.0,
+    "maxGwei": 0.05,
+    "replaceEveryMs": 200,
+    "maxBumps": 3
+  },
+  "kills": {
+    "pauseAboveBaseFeePctl": 0.9,
+    "pauseFailRatePct": 20
+  },
+  "slippageBpsPerLeg": 5,
+  "profitFloorUsd": 0.01
+}
