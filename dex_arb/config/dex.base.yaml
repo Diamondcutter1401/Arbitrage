@@ -1,0 +1,41 @@
+# Base chain DEX configurations
+dexes:
+  uniswap_v3:
+    name: "Uniswap V3"
+    router: "0x2626664c2603336E57B271c5C0b26F421741e481"
+    quoter_v2: "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a"
+    factory: "0x33128a8fC17869897dcE68Ed026d694621f6FDfD"
+    fee_tiers: [500, 3000, 10000]  # 0.05%, 0.3%, 1%
+    min_tvl_usd: 100000
+    
+  curve:
+    name: "Curve Finance"
+    registry: "0x0000000022D53366457F9d5E68Ec105046FC4383"
+    min_tvl_usd: 100000
+    
+  # Additional DEXes
+  sushiswap:
+    name: "SushiSwap"
+    router: "0x6BDED42c6DA8FBf0d2bA55B2fa120C5e0c8D7891"
+    factory: "0x71524B4f93c58fcbF659783284E38825f0622859"
+    min_tvl_usd: 50000
+
+# Pool allowlists (optional - for restricting to specific pools)
+allowlists:
+  uniswap_v3:
+    # Add specific pool addresses here if needed
+    # - "0x..."
+  
+  curve:
+    # Add specific pool addresses here if needed
+    # - "0x..."
+
+# Denylists (pools to avoid)
+denylists:
+  uniswap_v3:
+    # Add problematic pool addresses here
+    # - "0x..."
+  
+  curve:
+    # Add problematic pool addresses here
+    # - "0x..."

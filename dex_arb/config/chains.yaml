@@ -1,0 +1,44 @@
+base:
+  rpc: ${BASE_RPC}
+  private_tx_rpc: ${BASE_PRIVATE_TX_RPC}
+  aave_pool: "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2"
+  permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+  univ3:
+    router: "0x2626664c2603336E57B271c5C0b26F421741e481"
+    quoter_v2: "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a"
+    subgraph: "https://api.thegraph.com/subgraphs/name/ianlapham/uniswap-v3-base"
+  curve:
+    subgraph: "https://api.curve.fi/subgraphs/base"
+
+arbitrum:
+  rpc: ${ARB_RPC}
+  private_tx_rpc: ${ARB_PRIVATE_TX_RPC}
+  aave_pool: "0x794a61358D6845594F94dc1DB02A252b5b4814aD"
+  permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+  univ3:
+    router: "0xE592427A0AEce92De3Edee1F18E0157C05861564"
+    quoter_v2: "0x61fFE014bA17989E743c5F6cB21bF9697530B21e"
+    subgraph: "https://api.thegraph.com/subgraphs/name/ianlapham/uniswap-v3-arbitrum"
+  curve:
+    subgraph: "https://api.curve.fi/subgraphs/arbitrum"
+
+# Future chains (uncomment when ready)
+# immutable:
+#   rpc: ${IMX_RPC}
+#   private_tx_rpc: ${IMX_PRIVATE_TX_RPC}
+#   aave_pool: "0x..."
+#   permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+#   univ3:
+#     router: "0x..."
+#     quoter_v2: "0x..."
+#     subgraph: "https://api.thegraph.com/subgraphs/name/..."
+
+# metis:
+#   rpc: ${METIS_RPC}
+#   private_tx_rpc: ${METIS_PRIVATE_TX_RPC}
+#   aave_pool: "0x..."
+#   permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+#   univ3:
+#     router: "0x..."
+#     quoter_v2: "0x..."
+#     subgraph: "https://api.thegraph.com/subgraphs/name/..."

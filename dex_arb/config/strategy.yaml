@@ -1,0 +1,37 @@
+limits:
+  max_hops: 3
+  min_tvl_usd: 100000
+  deny_fee_on_transfer: true
+
+flashloan:
+  enabled: true
+  amount_usd: 10000
+  fee_pct: 0.0007  # 0.07%
+
+tips:
+  min_gwei: 0.0
+  max_gwei: 0.05
+  replace_every_ms: 200
+  max_bumps: 3
+
+kills:
+  basefee_p90_pause: true
+  failrate_pct_pause: 20
+
+profit:
+  slippage_bps_per_leg: 5
+  profit_floor_usd: 0.01
+
+sizes_usd: [500, 2000, 5000, 10000]
+
+# Risk management
+risk:
+  max_position_size_usd: 50000
+  max_daily_loss_usd: 1000
+  max_gas_price_gwei: 50
+  
+# Monitoring
+monitoring:
+  log_level: "INFO"
+  metrics_interval: 60  # seconds
+  health_check_interval: 30  # seconds
