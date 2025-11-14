@@ -1,4 +1,4 @@
-import { PublicClient, encodePacked, encodeFunctionData, Address } from "viem";
+import { PublicClient, encodePacked, Address, getAddress } from "viem";
 
 const QUOTER_V2_ABI = [
   {
@@ -22,24 +22,17 @@ export async function quoteUniV3ExactIn(
   amountIn: bigint
 ): Promise<bigint> {
   try {
-    const data = encodeFunctionData({
+    // Ensure checksummed address to satisfy viem's validation
+    const checksumQuoter = getAddress(quoterAddress);
+
+    // Use readContract for automatic ABI encoding/decoding & revert handling
+    const amountOut = await client.readContract({
       abi: QUOTER_V2_ABI,
+      address: checksumQuoter,
       functionName: "quoteExactInput",
       args: [path, amountIn]
     });
-
-    const result = await client.call({
-      to: quoterAddress,
-      data
-    });
-
-    if (!result.data) {
-      throw new Error("No data returned from quoter");
-    }
-
-    // Decode the result (amountOut is the first return value)
-    const amountOut = BigInt(result.data.slice(2, 66)); // First 32 bytes
-    return amountOut;
+    return amountOut as bigint;
   } catch (error) {
     console.error("Error quoting UniV3:", error);
     return 0n;

@@ -5,12 +5,12 @@
     "aavePool": "0xAAVE_POOL_BASE_ADDRESS",
     "univ3": {
       "router": "0x2626664c2603336E57B271c5C0b26F421741e481",
-      "quoterV2": "0x3d4e44Eb1374240CE5F1B871ab279CD0403Cf032",
-      "subgraph": "https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3-base"
+      "quoterV2": "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a",
+      "subgraph": "${BASE_UNIV3_SUBGRAPH}"
     },
     "curve": {
       "registry": "0xBASE_CURVE_REG",
-      "subgraph": "https://api.curve.fi/subgraphs/base"
+      "subgraph": "${BASE_CURVE_SUBGRAPH}"
     },
     "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
   },
@@ -21,11 +21,11 @@
     "univ3": {
       "router": "0xE592427A0AEce92De3Edee1F18E0157C05861564",
       "quoterV2": "0x61fFE014bA17989E743c5F6cB21bF9697530B21e",
-      "subgraph": "https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3-arbitrum"
+      "subgraph": "${ARB_UNIV3_SUBGRAPH}"
     },
     "curve": {
       "registry": "0xARB_CURVE_REG",
-      "subgraph": "https://api.curve.fi/subgraphs/arbitrum"
+      "subgraph": "${ARB_CURVE_SUBGRAPH}"
     },
     "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
   }

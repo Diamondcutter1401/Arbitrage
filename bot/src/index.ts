@@ -1,4 +1,5 @@
 import { config } from "dotenv";
+import path from "path";
 import { makeClients, ChainKey } from "./chains";
 import { Database } from "./db";
 import { MetricsLogger } from "./metrics";
@@ -11,10 +12,21 @@ import { genTwoAndThreeLegs, Route } from "./route/gen";
 import { scoreRoute } from "./route/score";
 import { buildExecuteData } from "./exec/tx";
 import { sendPrivateOrPublicTx } from "./exec/bundle";
-import { Address } from "viem";
+import { Address, keccak256, toHex } from "viem";
 
-// Load environment variables
+// Load environment variables (first try local .env, then fallback to ops/.env)
 config();
+if (!process.env.BASE_RPC && !process.env.ARB_RPC) {
+  const opsEnvPath = path.resolve(__dirname, "../../ops/.env");
+  try {
+    config({ path: opsEnvPath });
+    if (process.env.BASE_RPC || process.env.ARB_RPC) {
+      console.log(`Loaded environment from ops/.env at ${opsEnvPath}`);
+    }
+  } catch (e) {
+    console.warn("Could not load ops/.env", e);
+  }
+}
 
 interface BotConfig {
   chains: Record<ChainKey, any>;
@@ -34,12 +46,7 @@ class ArbitrageBot {
   constructor() {
     this.db = new Database(process.env.DATABASE_URL || "");
     this.metrics = new MetricsLogger();
-    this.riskManager = new RiskManager({
-      pauseAboveBaseFeePctl: 0.9,
-      pauseFailRatePct: 20,
-      maxGasPriceGwei: 0.05,
-      maxSlippageBps: 5
-    });
+    this.riskManager = RiskManager.fromEnv();
     
     // Load configs
     this.config = {
@@ -49,6 +56,23 @@ class ArbitrageBot {
       strategy: require("../config/strategy.json"),
       denylist: require("../config/denylist.json")
     };
+
+    // Interpolate environment variables inside JSON configs of the form ${VAR}
+    const interpolate = (obj: any): any => {
+      if (obj === null || obj === undefined) return obj;
+      if (typeof obj === "string") {
+        return obj.replace(/\$\{([A-Z0-9_]+)\}/g, (_: string, v: string) => process.env[v] ?? "");
+      }
+      if (Array.isArray(obj)) return obj.map(interpolate);
+      if (typeof obj === "object") {
+        for (const k of Object.keys(obj)) {
+          (obj as any)[k] = interpolate((obj as any)[k]);
+        }
+        return obj;
+      }
+      return obj;
+    };
+    this.config.chains = interpolate(this.config.chains);
   }
 
   async start(): Promise<void> {
@@ -81,7 +105,7 @@ class ArbitrageBot {
   }
 
   async processChain(chainKey: ChainKey): Promise<void> {
-    const chainConfig = this.config.chains[chainKey];
+  const chainConfig = this.config.chains[chainKey];
     const { publicClient, walletClient } = makeClients(
       chainKey,
       chainConfig.rpc,
@@ -89,29 +113,51 @@ class ArbitrageBot {
     );
 
     try {
-      // Discover pools
+      if (!chainConfig?.rpc) {
+        console.warn(`[${chainKey}] Missing RPC URL. Set BASE_RPC/ARB_RPC in ops/.env.`);
+        return;
+      }
+
+      // Sanity check: ensure Uniswap Quoter is deployed on this chain
+      try {
+        const code = await publicClient.getBytecode({ address: chainConfig.univ3.quoterV2 });
+        if (!code || code === "0x") {
+          console.warn(
+            `[${chainKey}] Uniswap QuoterV2 not found at ${chainConfig.univ3.quoterV2}. ` +
+            `Please update bot/config/chains.json (univ3.quoterV2) to the correct address for this chain. Skipping.`
+          );
+          return;
+        }
+      } catch (e) {
+        console.warn(`[${chainKey}] Could not fetch bytecode for quoter at ${chainConfig.univ3.quoterV2}:`, e);
+      }
+
       const uniPools = await fetchTopUniV3Pools(
         chainConfig.univ3.subgraph,
         this.config.strategy.minTvlUsd
       );
-      
       const curvePools = await fetchCurvePools(
         chainConfig.curve.subgraph,
         this.config.strategy.minTvlUsd
       );
+      console.log(`[${chainKey}] Pools => UniV3: ${uniPools.length}, Curve: ${curvePools.length}`);
 
-      // Generate routes
-      const routes = await this.generateRoutes(chainKey, uniPools, curvePools);
-      
-      // Quote routes
+  const routes = await this.generateRoutes(chainKey, uniPools, curvePools, chainConfig);
+      console.log(`[${chainKey}] Generated routes: ${routes.length}`);
+
+      if (routes.length === 0) {
+        console.log(`[${chainKey}] No routes to evaluate (likely discovery disabled or empty).`);
+        return;
+      }
+
       const profitableRoutes = await this.quoteRoutes(
         chainKey,
         routes,
         publicClient,
         chainConfig
       );
+      console.log(`[${chainKey}] Profitable routes: ${profitableRoutes.length}`);
 
-      // Execute best route
       if (profitableRoutes.length > 0) {
         const bestRoute = profitableRoutes[0];
         await this.executeRoute(
@@ -122,35 +168,68 @@ class ArbitrageBot {
           chainConfig
         );
       }
-
     } catch (error) {
       console.error(`Error processing chain ${chainKey}:`, error);
     }
   }
 
-  async generateRoutes(chainKey: ChainKey, uniPools: any[], curvePools: any[]): Promise<Route[]> {
+  async generateRoutes(chainKey: ChainKey, uniPools: any[], curvePools: any[], chainConfig?: any): Promise<Route[]> {
     const routes: Route[] = [];
-    
-    // Convert pools to legs (simplified)
     const legs: any[] = [];
-    
-    // Add UniV3 legs
-    for (const pool of uniPools.slice(0, 10)) { // Limit for performance
-      legs.push({
-        dex: "uniV3" as const,
-        addr: pool.id,
-        data: encodePath([pool.token0.id, pool.token1.id], [parseInt(pool.feeTier)]),
-        tokenIn: pool.token0.id,
-        tokenOut: pool.token1.id
-      });
+    // Add UniV3 legs (limit for performance). Use router address for execution
+    for (const pool of uniPools.slice(0, 10)) {
+      try {
+        legs.push({
+          dex: "uniV3" as const,
+          addr: chainConfig?.univ3?.router,
+          data: encodePath([pool.token0.id, pool.token1.id], [parseInt(pool.feeTier)]),
+          tokenIn: pool.token0.id,
+          tokenOut: pool.token1.id
+        });
+      } catch (e) {
+        console.warn("Failed to encode path for pool", pool.id, e);
+      }
     }
-
-    // Generate routes
+    // Fallback: if no UniV3 pools discovered, synthesize from token list and common fee tiers
+    if (uniPools.length === 0 && chainConfig?.univ3?.router) {
+      try {
+        const tokens = chainKey === "base"
+          ? require("../config/tokens.base.json")
+          : require("../config/tokens.arb.json");
+        const feeTiers = [500, 3000];
+        const pairs: Array<[string, string]> = [];
+        if (tokens.USDC && tokens.WETH) pairs.push([tokens.USDC.address, tokens.WETH.address]);
+        if (tokens.USDT && tokens.WETH) pairs.push([tokens.USDT.address, tokens.WETH.address]);
+        if (tokens.DAI && tokens.WETH) pairs.push([tokens.DAI.address, tokens.WETH.address]);
+        for (const [a, b] of pairs) {
+          for (const fee of feeTiers) {
+            legs.push({ 
+              dex: "uniV3" as const, 
+              addr: chainConfig.univ3.router as Address, 
+              data: encodePath([a as Address, b as Address], [fee]), 
+              tokenIn: a as Address, 
+              tokenOut: b as Address 
+            });
+            legs.push({ 
+              dex: "uniV3" as const, 
+              addr: chainConfig.univ3.router as Address, 
+              data: encodePath([b as Address, a as Address], [fee]), 
+              tokenIn: b as Address, 
+              tokenOut: a as Address 
+            });
+          }
+        }
+        console.log(`[${chainKey}] Using fallback UniV3 legs from tokens list: ${legs.length}`);
+      } catch (e) {
+        console.warn(`[${chainKey}] Fallback UniV3 leg generation failed:`, e);
+      }
+    }
+    // Future: add Curve legs here
     for (const route of genTwoAndThreeLegs(legs)) {
       routes.push(route);
+      if (routes.length >= 100) break; // safety cap
     }
-
-    return routes.slice(0, 100); // Limit routes for performance
+    return routes;
   }
 
   async quoteRoutes(
@@ -188,17 +267,36 @@ class ArbitrageBot {
         }
 
         // Score route
+        const amountInUSD = 1.0;
+        const amountOutUSD = Number(amountOut) / 1e18; // simplified
+        const gasUSD = 0.01;
+        const flashFeePct = this.config.strategy.flashloan.feePct;
+        const tvlUSD = 100000; // placeholder TVL
         const score = scoreRoute(
-          1.0, // amountInUSD
-          Number(amountOut) / 1e18, // amountOutUSD (simplified)
-          0.01, // gasUSD
-          this.config.strategy.flashloan.feePct,
-          100000, // tvlUSD
+          amountInUSD,
+          amountOutUSD,
+          gasUSD,
+          flashFeePct,
+          tvlUSD,
           route.legs.length,
           false // denied
         );
 
         if (score.allowed && score.profitUSD > this.config.strategy.profitFloorUsd) {
+          const routeHash = keccak256(toHex(JSON.stringify(route)));
+          // Persist quote (best-effort; no-op if DB disabled)
+          await this.db.insertQuote({
+            ts: new Date(),
+            chain: chainKey,
+            route_hash: routeHash,
+            amount_in_usd: amountInUSD,
+            amount_out_usd: amountOutUSD,
+            gas_estimate_usd: gasUSD,
+            flash_fee_usd: amountInUSD * flashFeePct,
+            profit_usd: score.profitUSD,
+            legs: route.legs
+          });
+
           profitableRoutes.push({
             route,
             score,
@@ -212,7 +310,17 @@ class ArbitrageBot {
     }
 
     // Sort by profit
-    return profitableRoutes.sort((a, b) => b.score.profitUSD - a.score.profitUSD);
+    const sorted = profitableRoutes.sort((a, b) => b.score.profitUSD - a.score.profitUSD);
+    // Log top 3 candidates for visibility in dry-run mode
+    const top = sorted.slice(0, 3);
+    for (const [idx, cand] of top.entries()) {
+      const inp = cand.route.input;
+      const out = cand.route.output;
+      console.log(
+        `Top #${idx + 1}: profit=$${cand.score.profitUSD.toFixed(4)} hops=${cand.route.legs.length} input=${inp} output=${out}`
+      );
+    }
+    return sorted;
   }
 
   async executeRoute(
@@ -225,7 +333,7 @@ class ArbitrageBot {
     try {
       const { route, score, amountOut } = routeData;
       
-      // Build transaction data
+      // Build transaction data (encoded calldata)
       const txData = buildExecuteData(
         route,
         1000000n, // amountIn
@@ -238,16 +346,21 @@ class ArbitrageBot {
       const gasPrice = await this.riskManager.getOptimalGasPrice(publicClient);
 
       // Build transaction
+      const executor = process.env.EXECUTOR_CONTRACT as Address | undefined;
+      if (!walletClient || !executor) {
+        console.warn("Missing wallet or EXECUTOR_CONTRACT; skipping execution.");
+        return;
+      }
       const tx = {
-        to: process.env.EXECUTOR_CONTRACT as Address,
-        data: txData,
+        to: executor,
+        data: txData.data,
         gas: 500000n,
         gasPrice,
         value: 0n
       };
 
       // Sign transaction
-      const signedTx = await walletClient.signTransaction(tx);
+  const signedTx = await walletClient.signTransaction(tx as any);
 
       // Send transaction
       const txHash = await sendPrivateOrPublicTx(

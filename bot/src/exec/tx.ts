@@ -1,4 +1,4 @@
-import { encodeAbiParameters, parseAbiParameters, Address, WalletClient, PublicClient } from "viem";
+import { encodeFunctionData, Address } from "viem";
 import { Route } from "../route/gen";
 
 const ARB_EXECUTOR_ABI = [
@@ -66,22 +66,27 @@ const ARB_EXECUTOR_ABI = [
   }
 ] as const;
 
-export async function buildExecuteData(
+export function buildExecuteData(
   route: Route,
   amountIn: bigint,
   minReturn: bigint,
   deadline: number,
   useFlashloan = false
-) {
-  const hops = route.legs.map(leg => [
-    leg.dex === "uniV3" ? 1 : 2, // Convert to uint8
-    leg.addr,
-    leg.data,
-    leg.tokenIn,
-    leg.tokenOut
-  ]);
+): { data: `0x${string}`; functionName: string; abi: typeof ARB_EXECUTOR_ABI; args: readonly [
+  { hops: { dex: number; routerOrPool: Address; data: `0x${string}`; tokenIn: Address; tokenOut: Address; }[]; inputToken: Address; outputToken: Address; },
+  bigint,
+  bigint,
+  bigint
+] } {
+  const hops: { dex: number; routerOrPool: Address; data: `0x${string}`; tokenIn: Address; tokenOut: Address; }[] = route.legs.map(leg => ({
+    dex: leg.dex === "uniV3" ? 1 : 2,
+    routerOrPool: leg.addr,
+    data: leg.data,
+    tokenIn: leg.tokenIn,
+    tokenOut: leg.tokenOut
+  }));
 
-  const routeData = {
+  const routeData: { hops: { dex: number; routerOrPool: Address; data: `0x${string}`; tokenIn: Address; tokenOut: Address; }[]; inputToken: Address; outputToken: Address; } = {
     hops,
     inputToken: route.input,
     outputToken: route.output
@@ -89,9 +94,12 @@ export async function buildExecuteData(
 
   const functionName = useFlashloan ? "executeWithFlashloan" : "execute";
   
-  return {
-    functionName,
-    args: [routeData, amountIn, minReturn, deadline],
-    abi: ARB_EXECUTOR_ABI
-  };
+  const args: readonly [
+    { hops: { dex: number; routerOrPool: Address; data: `0x${string}`; tokenIn: Address; tokenOut: Address; }[]; inputToken: Address; outputToken: Address; },
+    bigint,
+    bigint,
+    bigint
+  ] = [routeData, amountIn, minReturn, BigInt(deadline)];
+  const data = encodeFunctionData({ abi: ARB_EXECUTOR_ABI, functionName, args });
+  return { data, functionName, abi: ARB_EXECUTOR_ABI, args };
 }

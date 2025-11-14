@@ -28,13 +28,31 @@ forge test -vvv
 
 Deploy to Base:
 ```bash
-forge script script/Deploy.s.sol:DeployScript --rpc-url $BASE_RPC --private-key $SEARCHER_PK --broadcast
+# Set CHAIN environment variable (optional, defaults to "base")
+export CHAIN=base
+
+# Deploy with fork-url (required when using --rpc-url)
+forge script script/Deploy.s.sol:DeployScript \
+  --rpc-url $BASE_RPC \
+  --fork-url $BASE_RPC \
+  --private-key $SEARCHER_PK \
+  --broadcast
 ```
 
 Deploy to Arbitrum:
 ```bash
-forge script script/Deploy.s.sol:DeployScript --rpc-url $ARB_RPC --private-key $SEARCHER_PK --broadcast
+# Set CHAIN environment variable
+export CHAIN=arbitrum
+
+# Deploy with fork-url (required when using --rpc-url)
+forge script script/Deploy.s.sol:DeployScript \
+  --rpc-url $ARB_RPC \
+  --fork-url $ARB_RPC \
+  --private-key $SEARCHER_PK \
+  --broadcast
 ```
+
+**Note**: When deploying to a live network, you need to provide both `--rpc-url` and `--fork-url` with the same value. The `--fork-url` tells Foundry to fork from that RPC endpoint for simulation purposes, while `--rpc-url` is used for the actual broadcast.
 
 ## Verification
 

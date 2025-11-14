@@ -9,10 +9,10 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy package files
-COPY bot/package*.json ./bot/
+COPY bot/package.json ./bot/
 
-# Install dependencies
-RUN cd bot && npm ci --only=production
+# Install dependencies (use npm install since lockfile may not be present)
+RUN cd bot && npm install --omit=dev
 
 # Copy bot source code
 COPY bot /app/bot
@@ -20,9 +20,10 @@ COPY bot /app/bot
 # Build the application
 RUN cd bot && npm run build
 
-# Create non-root user
-RUN useradd -m -u 1000 arbuser && chown -R arbuser:arbuser /app
-USER arbuser
+# Use the existing non-root user from the Node image
+# node:20-slim has a pre-created 'node' user (typically uid 1000) to avoid uid conflicts
+RUN chown -R node:node /app
+USER node
 
 # Expose port (if needed for health checks)
 EXPOSE 3000

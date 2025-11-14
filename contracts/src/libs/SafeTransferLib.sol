@@ -16,6 +16,6 @@ library SafeTransferLib {
     }
 
     function safeApprove(address token, address spender, uint256 amount) internal {
-        IERC20(token).safeApprove(spender, amount);
+        IERC20(token).forceApprove(spender, amount);
     }
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "../libs/Permit2.sol";
+import "../../src/libs/Permit2.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract MockPermit2 is IAllowanceTransfer {
@@ -26,8 +26,10 @@ contract MockPermit2 is IAllowanceTransfer {
         require(msg.sender == executor, "only executor");
         require(allowances[from][msg.sender][token] >= amount, "insufficient allowance");
         
-        allowances[from][msg.sender][token] -= amount;
-        IERC20(token).transferFrom(address(this), to, amount);
+    allowances[from][msg.sender][token] -= amount;
+    // Chuyển trực tiếp từ balance của Permit2 mock sang 'to'.
+    // Dùng transfer thay vì transferFrom để không cần allowance ERC20 từ address(this) -> msg.sender.
+    IERC20(token).transfer(to, amount);
         transferFromCalled = true;
     }
 

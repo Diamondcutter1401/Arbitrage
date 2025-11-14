@@ -27,15 +27,14 @@ export interface ChainConfig {
 
 export function makeClients(chainKey: ChainKey, rpcUrl: string, pk: string) {
   const chain = CHAINS[chainKey];
-  const account = privateKeyToAccount(pk as `0x${string}`);
+  const hasValidPk = /^0x[0-9a-fA-F]{64}$/.test(pk);
+  const account = hasValidPk ? privateKeyToAccount(pk as `0x${string}`) : undefined;
   const publicClient = createPublicClient({ 
     chain, 
     transport: http(rpcUrl) 
   });
-  const walletClient = createWalletClient({ 
-    chain, 
-    account, 
-    transport: http(rpcUrl) 
-  });
+  const walletClient = hasValidPk
+    ? createWalletClient({ chain, account: account!, transport: http(rpcUrl) })
+    : undefined;
   return { publicClient, walletClient, account };
 }

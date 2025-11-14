@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "../libs/AaveV3.sol";
+import "../../src/libs/AaveV3.sol";
 
 contract MockAavePool is IAaveV3Pool {
     address public executor;

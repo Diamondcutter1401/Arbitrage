@@ -115,9 +115,9 @@ contract ArbExecutor is IFlashLoanSimpleReceiver {
                 amount = IUniswapV3Router(h.routerOrPool).exactInput(p);
             } else if (h.dex == 2) {
                 // Curve-like pool: data = abi.encode(int128 i, int128 j, uint256 minDy)
-                (int128 i, int128 j, uint256 minDy) = abi.decode(h.data, (int128, int128, uint256));
+                (int128 poolI, int128 poolJ, uint256 minDy) = abi.decode(h.data, (int128, int128, uint256));
                 token.safeApprove(h.routerOrPool, amount);
-                amount = ICurvePlainPool(h.routerOrPool).exchange(i, j, amount, minDy);
+                amount = ICurvePlainPool(h.routerOrPool).exchange(poolI, poolJ, amount, minDy);
             } else {
                 revert("unknown dex");
             }

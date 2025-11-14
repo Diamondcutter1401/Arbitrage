@@ -1,0 +1,88 @@
+# Top-level Git ignore for Arbitrage repo
+# Adjusted for Node/TypeScript bot, Foundry contracts, Docker/ops, and common OS/editor files
+
+# --- OS / Editor junk ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*.orig
+*.tmp
+*.temp
+
+# --- IDE / Editor ---
+.vscode/
+.idea/
+.history/
+*.code-workspace
+
+# --- Logs ---
+logs/
+*.log
+*.pid
+*.pid.lock
+
+# --- Node / JS ---
+node_modules/
+.pnpm-store/
+.bun/
+.npmrc
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.eslintcache
+
+# --- TypeScript ---
+*.tsbuildinfo
+
+# --- Build artifacts ---
+dist/
+build/
+# Keep if needed per-package; bot outputs to bot/dist as well
+bot/dist/
+
+# --- Coverage ---
+coverage/
+.nyc_output/
+
+# --- Docker / Env files (secrets) ---
+.env
+*.env
+.env.*
+**/.env
+**/.env.*
+# Keep example envs
+!**/env.example
+!**/.env.example
+
+# --- Foundry (contracts) build & vendor ---
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+# Ignore vendored libraries; use `forge install` to restore
+contracts/lib/
+
+# --- Python (if any tooling present) ---
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# --- Database dumps (do NOT ignore project sql/ schema) ---
+*.dump
+*.sql.zip
+*.sql.gz
+# Keep versioned schema files
+!sql/schema.sql
+!sql/indexes.sql
+
+# --- Misc archives ---
+*.tgz
+*.tar
+*.tar.gz
+
+# --- OS specific again (safety) ---
+Icon

@@ -21,6 +21,10 @@ export async function fetchTopUniV3Pools(
   subgraphUrl: string, 
   minTvlUsd = 100_000
 ): Promise<Pool[]> {
+  // Gracefully disable if no subgraph configured
+  if (!subgraphUrl || !subgraphUrl.trim()) {
+    return [];
+  }
   const query = `
     {
       pools(first: 200, orderBy: totalValueLockedUSD, orderDirection: desc) {
@@ -43,16 +47,41 @@ export async function fetchTopUniV3Pools(
   `;
 
   try {
+    const headers: Record<string,string> = { "content-type": "application/json" };
+    const apiKey = process.env.GRAPH_API_KEY?.trim();
+    const authMode = (process.env.GRAPH_AUTH_MODE || "bearer").toLowerCase();
+    if (apiKey) {
+      if (authMode === "bearer") headers["Authorization"] = `Bearer ${apiKey}`;
+      else if (authMode === "apikey") headers["apikey"] = apiKey;
+      else headers["Authorization"] = `Bearer ${apiKey}`; // default fallback
+    }
     const response = await fetch(subgraphUrl, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers,
       body: JSON.stringify({ query })
     });
 
+    // Ensure we got JSON
+    if (!response.ok) {
+      console.error(`UniV3 subgraph HTTP ${response.status} at ${subgraphUrl}`);
+      return [];
+    }
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      console.error(`UniV3 subgraph returned non-JSON content-type: ${contentType}`);
+      return [];
+    }
     const json = await response.json() as any;
     
     if (json.errors) {
-      console.error("GraphQL errors:", json.errors);
+      // Collapse repetitive auth errors
+      const msgs = json.errors.map((e: any) => e?.message || "");
+      const authErr = msgs.some((m: string) => /auth/i.test(m));
+      if (authErr) {
+        console.error(`GraphQL auth error for UniV3 subgraph. Set GRAPH_API_KEY or fix header. messages=`, json.errors);
+      } else {
+        console.error("GraphQL errors:", json.errors);
+      }
       return [];
     }
 

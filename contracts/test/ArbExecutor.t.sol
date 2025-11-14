@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
-import "../ArbExecutor.sol";
+import "../src/ArbExecutor.sol";
 import "./utils/MockERC20.sol";
 import "./utils/MockUniswapV3Router.sol";
 import "./utils/MockCurvePool.sol";
@@ -30,7 +30,7 @@ contract ArbExecutorTest is Test {
         tokenB = new MockERC20("TokenB", "TB");
         tokenC = new MockERC20("TokenC", "TC");
         uniRouter = new MockUniswapV3Router();
-        curvePool = new MockCurvePool();
+    curvePool = new MockCurvePool();
         aavePool = new MockAavePool();
         permit2 = new MockPermit2();
 
@@ -40,6 +40,8 @@ contract ArbExecutorTest is Test {
         // Setup mocks
         permit2.setExecutor(address(executor));
         aavePool.setExecutor(address(executor));
+    // Curve pool biết token in/out để mint output cho caller (executor)
+    curvePool.setTokens(address(tokenA), address(tokenB));
 
         vm.stopPrank();
     }
@@ -74,9 +76,10 @@ contract ArbExecutorTest is Test {
         uint256 minReturn = 900e18; // Allow some slippage
         uint256 deadline = block.timestamp + 3600;
 
-        // Mint tokens to executor for Permit2 transfer
-        tokenA.mint(address(permit2), amountIn);
-        permit2.setAllowance(owner, address(executor), address(tokenA), uint160(amountIn));
+    // Mint tokens cho Permit2 mock (nó giữ token để chuyển sang executor)
+    tokenA.mint(address(permit2), amountIn);
+    // Đặt allowance (đủ để executor gọi transferFrom thông qua mock)
+    permit2.setAllowance(owner, address(executor), address(tokenA), uint160(amountIn));
 
         // Execute
         uint256 amountOut = executor.execute(route, amountIn, minReturn, deadline);
@@ -118,7 +121,7 @@ contract ArbExecutorTest is Test {
         uint256 minReturn = 900e18; // Allow some slippage
         uint256 deadline = block.timestamp + 3600;
 
-        // Setup flashloan premium (0.07%)
+    // Setup flashloan premium (0.07%)
         uint256 premium = (amountIn * 7) / 10000;
         aavePool.setPremium(premium);
 
@@ -154,9 +157,8 @@ contract ArbExecutorTest is Test {
         uint256 minReturn = 2000e18; // Unrealistic high return
         uint256 deadline = block.timestamp + 3600;
 
-        // Mint tokens to executor for Permit2 transfer
-        tokenA.mint(address(permit2), amountIn);
-        permit2.setAllowance(owner, address(executor), address(tokenA), uint160(amountIn));
+    tokenA.mint(address(permit2), amountIn);
+    permit2.setAllowance(owner, address(executor), address(tokenA), uint160(amountIn));
 
         // Should revert due to minReturn not met
         vm.expectRevert("minReturn");
@@ -222,9 +224,8 @@ contract ArbExecutorTest is Test {
         uint256 minReturn = 900e18;
         uint256 deadline = block.timestamp + 3600;
 
-        // Mint tokens to executor for Permit2 transfer
-        tokenA.mint(address(permit2), amountIn);
-        permit2.setAllowance(owner, address(executor), address(tokenA), uint160(amountIn));
+    tokenA.mint(address(permit2), amountIn);
+    permit2.setAllowance(owner, address(executor), address(tokenA), uint160(amountIn));
 
         // Should revert due to unknown DEX
         vm.expectRevert("unknown dex");
@@ -255,9 +256,8 @@ contract ArbExecutorTest is Test {
         uint256 minReturn = 900e18;
         uint256 deadline = block.timestamp + 3600;
 
-        // Mint tokens to executor for Permit2 transfer
-        tokenA.mint(address(permit2), amountIn);
-        permit2.setAllowance(owner, address(executor), address(tokenA), uint160(amountIn));
+    tokenA.mint(address(permit2), amountIn);
+    permit2.setAllowance(owner, address(executor), address(tokenA), uint160(amountIn));
 
         // Execute
         uint256 amountOut = executor.execute(route, amountIn, minReturn, deadline);

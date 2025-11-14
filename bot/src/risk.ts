@@ -14,6 +14,18 @@ export class RiskManager {
 
   constructor(private config: RiskConfig) {}
 
+  static fromEnv(): RiskManager {
+    const toNum = (v: string | undefined, fallback: number) => {
+      const n = v !== undefined ? Number(v) : fallback; return Number.isFinite(n) ? n : fallback;
+    };
+    return new RiskManager({
+      pauseAboveBaseFeePctl: toNum(process.env.PAUSE_BASE_FEE_PCTL, 0.9),
+      pauseFailRatePct: toNum(process.env.PAUSE_FAIL_RATE_PCT, 20),
+      maxGasPriceGwei: toNum(process.env.MAX_GAS_PRICE_GWEI, 50),
+      maxSlippageBps: toNum(process.env.MAX_SLIPPAGE_BPS, 50)
+    });
+  }
+
   updateBaseFee(baseFeeGwei: number) {
     this.baseFeeHistory.push(baseFeeGwei);
     if (this.baseFeeHistory.length > this.maxHistorySize) {

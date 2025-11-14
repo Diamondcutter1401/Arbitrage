@@ -1,227 +1,116 @@
-# DEX Arbitrage Bot
+# DEX Arbitrage Bot — Detailed Guide (EN)
 
-A sophisticated arbitrage bot for Base and Arbitrum networks that discovers and executes profitable trades across Uniswap V3 and Curve pools using flash loans.
+This repository contains a production-oriented arbitrage bot targeting Uniswap V3 (and optionally Curve) on Base & Arbitrum. It discovers pools via subgraphs, builds multi‑hop routes, quotes them on-chain, scores profitability after gas/slippage, and can execute via a custom `ArbExecutor` contract.
 
-## Features
+## Key Capabilities
 
-- **Multi-Chain Support**: Base and Arbitrum networks
-- **Multi-DEX Integration**: Uniswap V3 and Curve pools
-- **Flash Loan Integration**: Aave V3 flash loans for capital efficiency
-- **Private Transaction Support**: MEV protection via private mempools
-- **Risk Management**: Automatic pause conditions and slippage protection
-- **Real-time Monitoring**: PostgreSQL database with comprehensive metrics
-- **Docker Deployment**: Production-ready containerized deployment
+- Multi-chain (Base, Arbitrum)
+- Uniswap V3 pool discovery (subgraph + fallback legs) / Curve (if schema supports `pools`)
+- On-chain quoting (Uniswap V3 QuoterV2)
+- Route generation (2–3 legs) + scoring
+- Optional contract execution (flash-loan capable `ArbExecutor`)
+- Risk guards (gas cap, slippage, profit floor)
+- PostgreSQL persistence (quotes, executions)
+- Docker Compose deployment
 
-## Architecture
+## Repository Layout
+```
+bot/src/
+  index.ts        -> Main loop: discovery → routes → quotes → score → (exec) → persist
+  chains.ts       -> Chain config & viem clients
+  discovery/      -> univ3.ts (Uniswap pools), curve.ts (Curve pools w/ introspection)
+  quotes/         -> univ3.ts (QuoterV2), curve.ts (if used)
+  route/          -> gen.ts (generate), score.ts (score & filter)
+  exec/           -> tx.ts (build & send), bundle.ts (optional grouping)
+  db.ts           -> Postgres connection/DAO
+  risk.ts         -> Basic risk checks
+  metrics.ts      -> In-memory metrics (Prometheus formatting helper)
+bot/config/*.json -> Strategy, tokens, chains, dex definitions
+ops/              -> docker-compose.yml, env.example, prometheus config
+sql/              -> schema.sql + indexes.sql initialize DB
+contracts/        -> ArbExecutor.sol & Foundry build/test infra
+```
 
-### Smart Contracts
-- **ArbExecutor**: Main execution contract with flash loan support
-- **Permit2 Integration**: Gasless token approvals
-- **Multi-hop Routing**: 2-leg and 3-leg arbitrage routes
+## Environment (.env)
+Essential variables (placed in `ops/.env`):
 
-### Bot Components
-- **Discovery**: Real-time pool discovery via subgraphs
-- **Quoting**: On-chain price quotes for route evaluation
-- **Routing**: Intelligent route generation and scoring
-- **Execution**: Private transaction submission with MEV protection
-- **Risk Management**: Dynamic risk controls and kill switches
+| Variable | Purpose |
+|----------|---------|
+| BASE_RPC / ARB_RPC | RPC endpoints (embed provider API key) |
+| BASE_UNIV3_SUBGRAPH / ARB_UNIV3_SUBGRAPH | Uniswap V3 subgraph (Graph gateway URL) |
+| BASE_CURVE_SUBGRAPH / ARB_CURVE_SUBGRAPH | Curve subgraph (may lack `pools`; empty disables) |
+| GRAPH_AUTH_MODE | `bearer` or `apikey` header style |
+| GRAPH_API_KEY | API key for The Graph gateway (if not embedded in URL) |
+| SEARCHER_PK | Private key for signing (dev only) |
+| EXECUTOR_CONTRACT | Deployed `ArbExecutor` contract address (optional) |
+| DATABASE_URL | Postgres connection string |
+| PROFIT_FLOOR_USD | Minimum profit to keep a route |
+| MAX_SLIPPAGE_BPS | Slippage cap per leg |
 
-## Quick Start
+Security recommendation: never commit `.env`, rotate exposed keys immediately.
 
-### Prerequisites
-- Docker and Docker Compose
-- Node.js 18+ (for development)
-- Access to Base and Arbitrum RPC endpoints
-- Private keys for transaction signing
+## Running with Docker
+```powershell
+# From ops directory
+copy env.example .env
+# Edit .env: set RPCs, subgraphs, GRAPH_API_KEY, etc.
+docker compose up -d --build
+docker compose logs -f bot
+```
+Expected healthy logs:
+```
+[base] Pools => UniV3: <N>, Curve: <M>
+[arbitrum] Pools => UniV3: <N>, Curve: <M>
+```
+If Curve subgraph lacks `pools`, you’ll see a one‑time message and it’s skipped.
 
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd dex-arb
-   ```
-
-2. **Set up environment**
-   ```bash
-   cd ops
-   cp env.example .env
-   # Edit .env with your configuration
-   ```
-
-3. **Start the database**
-   ```bash
-   docker compose up -d db
-   ```
-
-4. **Deploy contracts**
-   ```bash
-   cd contracts
-   forge build
-   forge script script/Deploy.s.sol:DeployScript --rpc-url $BASE_RPC --private-key $SEARCHER_PK --broadcast
-   ```
-
-5. **Start the bot**
-   ```bash
-   docker compose up -d
-   ```
-
-## Configuration
-
-### Environment Variables
-- `BASE_RPC`: Base network RPC URL
-- `ARB_RPC`: Arbitrum network RPC URL
-- `SEARCHER_PK`: Private key for transaction signing
-- `EXECUTOR_CONTRACT`: Deployed ArbExecutor contract address
-- `DATABASE_URL`: PostgreSQL connection string
-
-### Strategy Configuration
-Edit `bot/config/strategy.json`:
+## Strategy Tuning Example (`bot/config/strategy.json`)
 ```json
 {
   "minTvlUsd": 100000,
   "maxHops": 3,
-  "flashloan": {
-    "enabled": true,
-    "amountUsd": 10000,
-    "feePct": 0.0007
-  },
-  "profitFloorUsd": 0.01
+  "profitFloorUsd": 0.01,
+  "flashloan": { "enabled": true, "amountUsd": 10000, "feePct": 0.0007 }
 }
 ```
 
-## Usage
+## Typical Operational Flow
+1. Discovery (subgraph) or fallback token legs if empty.
+2. Route generation (pairwise & multi-hop combinations subject to maxHops).
+3. Quote each leg (QuoterV2 / Curve formula).
+4. Aggregate route PnL after gas & slippage adjustments.
+5. Persist top profitable quotes; optionally broadcast transaction bundle.
 
-### Running the Bot
-```bash
-# Start all services
-docker compose up -d
-
-# View logs
-docker compose logs -f bot
-
-# Stop the bot
-docker compose stop bot
-```
-
-### Manual Operations
-```bash
-# Discover pools
-npm run discover:base
-npm run discover:arb
-
-# Run backtest
-npm run backtest base 1000 2000
-
-# Backfill historical data
-npm run backfill base 7
-```
-
-### Database Queries
+## Database Quick Queries
 ```sql
--- Check recent profitable quotes
-SELECT * FROM quotes 
-WHERE profit_usd > 0.01 
-ORDER BY ts DESC 
-LIMIT 10;
-
--- Monitor execution success rate
-SELECT status, COUNT(*) as count, AVG(profit_usd) as avg_profit
-FROM executions 
-WHERE ts > NOW() - INTERVAL '1 hour'
-GROUP BY status;
+SELECT ts, chain, profit_usd FROM quotes ORDER BY ts DESC LIMIT 20;
 ```
-
-## Risk Management
-
-The bot includes multiple layers of risk protection:
-
-1. **Gas Price Protection**: Pauses when gas prices exceed 90th percentile
-2. **Failure Rate Protection**: Pauses when failure rate exceeds 20%
-3. **Slippage Protection**: Maximum 5% slippage per leg
-4. **Profit Floor**: Minimum $0.01 profit required
-5. **TVL Requirements**: Minimum $100k pool TVL
-
-## Monitoring
-
-### Metrics
-- `executions_total`: Total number of executions
-- `profit_usd`: Profit per execution
-- `gas_price_gwei`: Current gas prices
-- `route_quotes_total`: Total route quotes generated
-
-### Alerts
-- High gas price conditions
-- Execution failure rates
-- Database connection issues
-- Contract interaction failures
-
-## Development
-
-### Local Development
-```bash
-cd bot
-npm install
-npm run dev
-```
-
-### Testing
-```bash
-cd contracts
-forge test
-```
-
-### Code Structure
-```
-bot/src/
-├── chains.ts          # Chain configuration and clients
-├── discovery/         # Pool discovery modules
-├── quotes/           # Price quoting modules
-├── route/            # Route generation and scoring
-├── exec/             # Transaction execution
-├── db.ts             # Database operations
-├── risk.ts           # Risk management
-└── metrics.ts        # Metrics collection
-```
-
-## Security Considerations
-
-1. **Private Key Management**: Use hardware wallets for production
-2. **Contract Security**: Regular security audits recommended
-3. **Network Security**: Use private RPC endpoints
-4. **Access Control**: Implement proper access controls
 
 ## Troubleshooting
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| Unauthorized RPC | Missing API key | Embed key in RPC URL |
+| Missing auth header (Graph) | GRAPH_API_KEY unset | Set key + restart |
+| Curve `pools` error | Subgraph schema mismatch | Use correct Curve subgraph or skip |
+| Zero profitable routes | TVL too low / config strict | Adjust strategy (minTvlUsd, profitFloor) |
 
-### Common Issues
-- **Database Connection**: Check PostgreSQL status and connection string
-- **RPC Issues**: Verify RPC URLs and rate limits
-- **Transaction Failures**: Check gas prices and slippage settings
-- **Low Profitability**: Adjust strategy parameters
+## Extending
+- Add `/metrics` HTTP server to expose `metrics.formatPrometheus()`.
+- Add static seed pools JSON when subgraph unavailable.
+- Integrate private orderflow (Flashbots / MEV-Share) in `exec/tx.ts`.
 
-### Logs
-```bash
-# View recent errors
-docker compose logs bot | grep ERROR
-
-# Monitor execution attempts
-docker compose logs bot | grep "Executed route"
-```
+## Security
+Replace dev keys; consider hardware signer. Review `ArbExecutor.sol` before production deployment.
 
 ## Contributing
+Fork → branch → change → test → PR.
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
+---
 
-## License
+# DEX Arbitrage Bot — Hướng dẫn tiếng Việt (VI)
 
-MIT License - see LICENSE file for details
+Xem file `README.vi.md` để biết phiên bản tiếng Việt chi tiết. Nội dung bao quát: kiến trúc, biến môi trường, cách chạy Docker, điều chỉnh chiến lược, xử lý lỗi thường gặp.
 
-## Support
+---
 
-- GitHub Issues: Report bugs and feature requests
-- Documentation: See `ops/runbook.md` for detailed operations guide
-- Community: Join our Discord for support and discussions
+License: MIT
